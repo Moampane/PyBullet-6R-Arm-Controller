@@ -11,6 +11,7 @@ class RobotController:
         self.controllable_joints = controllable_joints
         self.end_eff_index = end_eff_index
         self.time_step = time_step
+        self.initial_screw_axes = None
 
     def create_world(self, GUI=True):
         # load pybullet physics engine
@@ -40,6 +41,8 @@ class RobotController:
         if self.end_eff_index is None:
             self.end_eff_index = self.controllable_joints[-1]
         print('#End-effector:', self.end_eff_index)
+        if self.initial_screw_axes is None:
+            self.initial_screw_axes = get_screw_axes(self.robot_id)
 
     def start_sim(self):
         while True:
@@ -66,6 +69,21 @@ class RobotController:
                           [0, 0, 0, 1]])
 
         return pose @ M_mat
+    
+    def get_jacobian(self, configuration):
+        exponentials = [calculate_exponential(self.initial_screw_axes[idx], configuration[idx]) for idx in range(len(configuration)-1)]
+
+        jacobian_columns = [self.initial_screw_axes[0]]
+        for idx in range(5):
+            exp_product = np.eye(4)
+            for exponential in exponentials[:idx+1]:
+                exp_product = exp_product @ exponential
+            adj_transform = get_adj_transform(exp_product)
+            jacobian_columns.append(adj_transform @ self.initial_screw_axes[idx+1])
+
+        jacobian = np.column_stack(jacobian_columns)
+
+        return jacobian
 
 def get_screw_axes(robot_id):
     num_joints = p.getNumJoints(robot_id)
@@ -124,3 +142,31 @@ def calculate_exponential(screw_axis, theta):
     bottom_row = np.array([[0, 0, 0, 1]])
 
     return np.concatenate((linear_and_angular, bottom_row))
+
+def htm_to_vector(htm):
+
+    pitch = np.arcsin(-htm[2][0]) # y-axis
+    roll = np.arctan2(htm[2][1], htm[2][2]) # x-axis
+    yaw = np.arctan2(htm[1][0], htm[0][0]) # z-axis
+
+    x = htm[0][3]
+    y = htm[1][3]
+    z = htm[2][3]
+    
+    vector = np.array([
+        [roll],
+        [pitch],
+        [yaw],
+        [x],
+        [y],
+        [z]
+    ])
+    return vector
+
+def get_adj_transform(exponential):
+    rot = exponential[:3, :3]
+    lin = np.array(exponential[3, :3])
+    adj_transformation = np.concatenate((np.concatenate((rot, np.zeros((3, 3))), 1),
+                        np.concatenate((skew_mat(lin) @ rot, rot), 1)))
+    
+    return adj_transformation
