@@ -131,6 +131,18 @@ class RobotController:
         jacobian = np.column_stack(jacobian_columns)
 
         return jacobian
+    
+    def do_free_fall(self):
+        # Enable torque control
+        p.setJointMotorControlArray(self.robot_id, self.controllable_joints,
+                                    p.VELOCITY_CONTROL, 
+                                    forces=np.zeros(len(self.controllable_joints)))
+
+
+        tau = [0.0] * len(self.controllable_joints) # for free fall under gravity
+        p.setJointMotorControlArray(self.robot_id, self.controllable_joints,
+                                    controlMode = p.TORQUE_CONTROL, 
+                                    forces = tau)
 
 def get_screw_axes(robot_id):
     num_joints = p.getNumJoints(robot_id)
